@@ -1,0 +1,825 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import sqlite3
+from datetime import datetime
+from tkinter import font as tkfont
+import locale
+
+class RentalSystem:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("نظام إدارة تأجير الشقق")
+        self.root.geometry("1200x700")
+        
+        # تفعيل وضع RTL للواجهة
+        self.root.tk.call('tk', 'windowingsystem')
+        self.root.tk.call('set', 'theme', 'default')
+        self.root.tk.call('set', 'rtl', True)
+        
+        # تعيين الخط العربي
+        self.arabic_font = tkfont.Font(family='Tahoma', size=12)
+        
+        # تكوين أنماط الواجهة
+        self.configure_styles()
+        
+        # إنشاء قاعدة البيانات
+        self.create_database()
+        
+        # إنشاء واجهة المستخدم
+        self.create_widgets()
+    
+    def configure_styles(self):
+        """تكوين أنماط الواجهة للغة العربية"""
+        style = ttk.Style()
+        
+        # الأنماط العامة
+        style.configure('.', 
+                      font=self.arabic_font,
+                      justify='right')
+        
+        # أنماط Treeview
+        style.configure("Treeview",
+                       font=self.arabic_font,
+                       justify='right')
+        
+        style.configure("Treeview.Heading",
+                       font=self.arabic_font,
+                       justify='right')
+        
+        # أنماط الأزرار
+        style.configure('TButton',
+                      font=self.arabic_font,
+                      padding=5)
+        
+        # أنماط LabelFrame
+        style.configure('TLabelframe',
+                      font=self.arabic_font)
+        
+        style.configure('TLabelframe.Label',
+                      font=self.arabic_font,
+                      justify='right')
+    
+    def create_database(self):
+        """إنشاء وتكوين قاعدة البيانات"""
+        self.conn = sqlite3.connect('rental_system.db')
+        self.cursor = self.conn.cursor()
+        
+        # جدول الشقق
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS apartments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number TEXT UNIQUE,
+                rooms INTEGER,
+                bathrooms INTEGER,
+                area REAL,
+                price REAL,
+                status TEXT DEFAULT 'متاحة',
+                tenant_name TEXT,
+                contract_start TEXT,
+                contract_end TEXT
+            )
+        ''')
+        
+        # جدول المستأجرين
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                phone TEXT,
+                id_number TEXT UNIQUE,
+                apartment_id INTEGER,
+                FOREIGN KEY (apartment_id) REFERENCES apartments (id)
+            )
+        ''')
+        
+        self.conn.commit()
+    
+    def create_widgets(self):
+        """إنشاء عناصر واجهة المستخدم"""
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # تبويب الشقق
+        self.apartments_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.apartments_tab, text='إدارة الشقق')
+        self.setup_apartments_tab()
+        
+        # تبويب المستأجرين
+        self.tenants_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.tenants_tab, text='إدارة المستأجرين')
+        self.setup_tenants_tab()
+        
+        # تبويب العقود
+        self.contracts_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.contracts_tab, text='إدارة العقود')
+        self.setup_contracts_tab()
+        
+        # تبويب التقارير
+        self.reports_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.reports_tab, text='التقارير والإحصاءات')
+        self.setup_reports_tab()
+    
+    def setup_apartments_tab(self):
+        """تكوين واجهة تبويب الشقق"""
+        # إطار إضافة شقة جديدة
+        add_frame = ttk.LabelFrame(self.apartments_tab, text="إضافة شقة جديدة")
+        add_frame.pack(fill='x', padx=10, pady=5)
+        
+        # حقول الإدخال
+        ttk.Label(add_frame, text="رقم الشقة:").grid(row=0, column=3, padx=5, pady=5, sticky='e')
+        self.apartment_number = ttk.Entry(add_frame, justify='right')
+        self.apartment_number.grid(row=0, column=2, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="عدد الغرف:").grid(row=0, column=1, padx=5, pady=5, sticky='e')
+        self.rooms = ttk.Entry(add_frame, justify='right')
+        self.rooms.grid(row=0, column=0, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="عدد الحمامات:").grid(row=1, column=3, padx=5, pady=5, sticky='e')
+        self.bathrooms = ttk.Entry(add_frame, justify='right')
+        self.bathrooms.grid(row=1, column=2, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="المساحة (م²):").grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        self.area = ttk.Entry(add_frame, justify='right')
+        self.area.grid(row=1, column=0, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="السعر (شهرياً):").grid(row=2, column=3, padx=5, pady=5, sticky='e')
+        self.price = ttk.Entry(add_frame, justify='right')
+        self.price.grid(row=2, column=2, padx=5, pady=5)
+        
+        # زر الإضافة
+        ttk.Button(add_frame, text="إضافة شقة", command=self.add_apartment).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        
+        # إطار عرض الشقق
+        list_frame = ttk.LabelFrame(self.apartments_tab, text="قائمة الشقق")
+        list_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # شجرة عرض البيانات
+        columns = ('number', 'rooms', 'bathrooms', 'area', 'price', 'status')
+        self.apartments_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=15)
+        
+        # عناوين الأعمدة
+        self.apartments_tree.heading('number', text='رقم الشقة', anchor='e')
+        self.apartments_tree.heading('rooms', text='عدد الغرف', anchor='e')
+        self.apartments_tree.heading('bathrooms', text='عدد الحمامات', anchor='e')
+        self.apartments_tree.heading('area', text='المساحة (م²)', anchor='e')
+        self.apartments_tree.heading('price', text='السعر الشهري', anchor='e')
+        self.apartments_tree.heading('status', text='الحالة', anchor='e')
+        
+        # تحديد عرض الأعمدة
+        self.apartments_tree.column('number', width=120, anchor='e')
+        self.apartments_tree.column('rooms', width=100, anchor='e')
+        self.apartments_tree.column('bathrooms', width=100, anchor='e')
+        self.apartments_tree.column('area', width=100, anchor='e')
+        self.apartments_tree.column('price', width=120, anchor='e')
+        self.apartments_tree.column('status', width=100, anchor='e')
+        
+        self.apartments_tree.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # شريط التمرير
+        scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=self.apartments_tree.yview)
+        scrollbar.pack(side='left', fill='y')
+        self.apartments_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # أزرار التحكم
+        control_frame = ttk.Frame(list_frame)
+        control_frame.pack(fill='x', pady=5)
+        
+        ttk.Button(control_frame, text="تحديث القائمة", command=self.load_apartments).pack(side='right', padx=5)
+        ttk.Button(control_frame, text="حذف الشقة", command=self.delete_apartment).pack(side='right', padx=5)
+        ttk.Button(control_frame, text="تعديل الشقة", command=self.edit_apartment).pack(side='right', padx=5)
+        
+        # تحميل البيانات
+        self.load_apartments()
+    
+    def add_apartment(self):
+        """إضافة شقة جديدة إلى قاعدة البيانات"""
+        try:
+            self.cursor.execute('''
+                INSERT INTO apartments (number, rooms, bathrooms, area, price)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                self.apartment_number.get(),
+                int(self.rooms.get()),
+                int(self.bathrooms.get()),
+                float(self.area.get()),
+                float(self.price.get())
+            ))
+            self.conn.commit()
+            messagebox.showinfo("نجاح", "تمت إضافة الشقة بنجاح", parent=self.root)
+            self.load_apartments()
+            self.clear_apartment_fields()
+        except sqlite3.IntegrityError:
+            messagebox.showerror("خطأ", "رقم الشقة موجود مسبقاً", parent=self.root)
+        except ValueError:
+            messagebox.showerror("خطأ", "الرجاء إدخال قيم صحيحة", parent=self.root)
+    
+    def load_apartments(self):
+        """تحميل قائمة الشقق من قاعدة البيانات"""
+        self.apartments_tree.delete(*self.apartments_tree.get_children())
+        
+        self.cursor.execute('SELECT number, rooms, bathrooms, area, price, status FROM apartments')
+        apartments = self.cursor.fetchall()
+        
+        for apartment in apartments:
+            self.apartments_tree.insert('', 'end', values=apartment)
+    
+    def delete_apartment(self):
+        """حذف شقة محددة"""
+        selected_item = self.apartments_tree.selection()
+        if not selected_item:
+            messagebox.showerror("خطأ", "الرجاء اختيار شقة للحذف", parent=self.root)
+            return
+        
+        apartment_number = self.apartments_tree.item(selected_item)['values'][0]
+        
+        if messagebox.askyesno("تأكيد", f"هل أنت متأكد من حذف الشقة رقم {apartment_number}؟", parent=self.root):
+            self.cursor.execute('DELETE FROM apartments WHERE number = ?', (apartment_number,))
+            self.conn.commit()
+            self.load_apartments()
+    
+    def edit_apartment(self):
+        """تعديل بيانات شقة محددة"""
+        selected_item = self.apartments_tree.selection()
+        if not selected_item:
+            messagebox.showerror("خطأ", "الرجاء اختيار شقة للتعديل", parent=self.root)
+            return
+        
+        apartment_number = self.apartments_tree.item(selected_item)['values'][0]
+        self.cursor.execute('SELECT * FROM apartments WHERE number = ?', (apartment_number,))
+        apartment = self.cursor.fetchone()
+        
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title("تعديل بيانات الشقة")
+        edit_window.geometry("500x400")
+        
+        # حقول التعديل
+        ttk.Label(edit_window, text="رقم الشقة:").grid(row=0, column=1, padx=5, pady=5, sticky='e')
+        number_entry = ttk.Entry(edit_window, justify='right')
+        number_entry.grid(row=0, column=0, padx=5, pady=5)
+        number_entry.insert(0, apartment[1])
+        number_entry.config(state='readonly')
+        
+        ttk.Label(edit_window, text="عدد الغرف:").grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        rooms_entry = ttk.Entry(edit_window, justify='right')
+        rooms_entry.grid(row=1, column=0, padx=5, pady=5)
+        rooms_entry.insert(0, apartment[2])
+        
+        ttk.Label(edit_window, text="عدد الحمامات:").grid(row=2, column=1, padx=5, pady=5, sticky='e')
+        bathrooms_entry = ttk.Entry(edit_window, justify='right')
+        bathrooms_entry.grid(row=2, column=0, padx=5, pady=5)
+        bathrooms_entry.insert(0, apartment[3])
+        
+        ttk.Label(edit_window, text="المساحة (م²):").grid(row=3, column=1, padx=5, pady=5, sticky='e')
+        area_entry = ttk.Entry(edit_window, justify='right')
+        area_entry.grid(row=3, column=0, padx=5, pady=5)
+        area_entry.insert(0, apartment[4])
+        
+        ttk.Label(edit_window, text="السعر (شهرياً):").grid(row=4, column=1, padx=5, pady=5, sticky='e')
+        price_entry = ttk.Entry(edit_window, justify='right')
+        price_entry.grid(row=4, column=0, padx=5, pady=5)
+        price_entry.insert(0, apartment[5])
+        
+        ttk.Label(edit_window, text="الحالة:").grid(row=5, column=1, padx=5, pady=5, sticky='e')
+        status_combobox = ttk.Combobox(edit_window, values=['متاحة', 'مؤجرة', 'صيانة'], justify='right')
+        status_combobox.grid(row=5, column=0, padx=5, pady=5)
+        status_combobox.set(apartment[6])
+        
+        def save_changes():
+            try:
+                self.cursor.execute('''
+                    UPDATE apartments SET
+                    rooms = ?,
+                    bathrooms = ?,
+                    area = ?,
+                    price = ?,
+                    status = ?
+                    WHERE number = ?
+                ''', (
+                    int(rooms_entry.get()),
+                    int(bathrooms_entry.get()),
+                    float(area_entry.get()),
+                    float(price_entry.get()),
+                    status_combobox.get(),
+                    apartment_number
+                ))
+                self.conn.commit()
+                messagebox.showinfo("نجاح", "تم تعديل بيانات الشقة بنجاح", parent=edit_window)
+                edit_window.destroy()
+                self.load_apartments()
+            except ValueError:
+                messagebox.showerror("خطأ", "الرجاء إدخال قيم صحيحة", parent=edit_window)
+        
+        ttk.Button(edit_window, text="حفظ التعديلات", command=save_changes).grid(row=6, column=0, columnspan=2, pady=10)
+    
+    def clear_apartment_fields(self):
+        """مسح حقول إدخال الشقة"""
+        self.apartment_number.delete(0, 'end')
+        self.rooms.delete(0, 'end')
+        self.bathrooms.delete(0, 'end')
+        self.area.delete(0, 'end')
+        self.price.delete(0, 'end')
+    
+    def setup_tenants_tab(self):
+        """تكوين واجهة تبويب المستأجرين"""
+        # إطار إضافة مستأجر جديد
+        add_frame = ttk.LabelFrame(self.tenants_tab, text="إضافة مستأجر جديد")
+        add_frame.pack(fill='x', padx=10, pady=5)
+        
+        # حقول الإدخال
+        ttk.Label(add_frame, text="الاسم:").grid(row=0, column=3, padx=5, pady=5, sticky='e')
+        self.tenant_name = ttk.Entry(add_frame, justify='right')
+        self.tenant_name.grid(row=0, column=2, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="رقم الهاتف:").grid(row=0, column=1, padx=5, pady=5, sticky='e')
+        self.tenant_phone = ttk.Entry(add_frame, justify='right')
+        self.tenant_phone.grid(row=0, column=0, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="رقم الهوية:").grid(row=1, column=3, padx=5, pady=5, sticky='e')
+        self.tenant_id = ttk.Entry(add_frame, justify='right')
+        self.tenant_id.grid(row=1, column=2, padx=5, pady=5)
+        
+        ttk.Label(add_frame, text="رقم الشقة:").grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        self.tenant_apartment = ttk.Entry(add_frame, justify='right')
+        self.tenant_apartment.grid(row=1, column=0, padx=5, pady=5)
+        
+        # زر الإضافة
+        ttk.Button(add_frame, text="إضافة مستأجر", command=self.add_tenant).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        
+        # إطار عرض المستأجرين
+        list_frame = ttk.LabelFrame(self.tenants_tab, text="قائمة المستأجرين")
+        list_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # شجرة عرض البيانات
+        columns = ('name', 'phone', 'id_number', 'apartment')
+        self.tenants_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=15)
+        
+        # عناوين الأعمدة
+        self.tenants_tree.heading('name', text='الاسم', anchor='e')
+        self.tenants_tree.heading('phone', text='رقم الهاتف', anchor='e')
+        self.tenants_tree.heading('id_number', text='رقم الهوية', anchor='e')
+        self.tenants_tree.heading('apartment', text='رقم الشقة', anchor='e')
+        
+        # تحديد عرض الأعمدة
+        self.tenants_tree.column('name', width=200, anchor='e')
+        self.tenants_tree.column('phone', width=150, anchor='e')
+        self.tenants_tree.column('id_number', width=150, anchor='e')
+        self.tenants_tree.column('apartment', width=120, anchor='e')
+        
+        self.tenants_tree.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # شريط التمرير
+        scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=self.tenants_tree.yview)
+        scrollbar.pack(side='left', fill='y')
+        self.tenants_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # أزرار التحكم
+        control_frame = ttk.Frame(list_frame)
+        control_frame.pack(fill='x', pady=5)
+        
+        ttk.Button(control_frame, text="تحديث القائمة", command=self.load_tenants).pack(side='right', padx=5)
+        ttk.Button(control_frame, text="حذف المستأجر", command=self.delete_tenant).pack(side='right', padx=5)
+        ttk.Button(control_frame, text="تعديل المستأجر", command=self.edit_tenant).pack(side='right', padx=5)
+        
+        # تحميل البيانات
+        self.load_tenants()
+    
+    def add_tenant(self):
+        """إضافة مستأجر جديد إلى قاعدة البيانات"""
+        try:
+            # التحقق من وجود الشقة
+            self.cursor.execute('SELECT id FROM apartments WHERE number = ?', (self.tenant_apartment.get(),))
+            apartment = self.cursor.fetchone()
+            
+            if not apartment:
+                messagebox.showerror("خطأ", "رقم الشقة غير موجود", parent=self.root)
+                return
+            
+            apartment_id = apartment[0]
+            
+            self.cursor.execute('''
+                INSERT INTO tenants (name, phone, id_number, apartment_id)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                self.tenant_name.get(),
+                self.tenant_phone.get(),
+                self.tenant_id.get(),
+                apartment_id
+            ))
+            
+            # تحديث حالة الشقة إلى "مؤجرة"
+            self.cursor.execute('''
+                UPDATE apartments SET status = 'مؤجرة', tenant_name = ?
+                WHERE number = ?
+            ''', (self.tenant_name.get(), self.tenant_apartment.get()))
+            
+            self.conn.commit()
+            messagebox.showinfo("نجاح", "تمت إضافة المستأجر بنجاح", parent=self.root)
+            self.load_tenants()
+            self.clear_tenant_fields()
+        except sqlite3.IntegrityError:
+            messagebox.showerror("خطأ", "رقم الهوية موجود مسبقاً", parent=self.root)
+    
+    def load_tenants(self):
+        """تحميل قائمة المستأجرين من قاعدة البيانات"""
+        self.tenants_tree.delete(*self.tenants_tree.get_children())
+        
+        self.cursor.execute('''
+            SELECT t.name, t.phone, t.id_number, a.number 
+            FROM tenants t
+            JOIN apartments a ON t.apartment_id = a.id
+        ''')
+        tenants = self.cursor.fetchall()
+        
+        for tenant in tenants:
+            self.tenants_tree.insert('', 'end', values=tenant)
+    
+    def delete_tenant(self):
+        """حذف مستأجر محدد"""
+        selected_item = self.tenants_tree.selection()
+        if not selected_item:
+            messagebox.showerror("خطأ", "الرجاء اختيار مستأجر للحذف", parent=self.root)
+            return
+        
+        tenant_id = self.tenants_tree.item(selected_item)['values'][2]
+        apartment_number = self.tenants_tree.item(selected_item)['values'][3]
+        
+        if messagebox.askyesno("تأكيد", "هل أنت متأكد من حذف المستأجر؟", parent=self.root):
+            # حذف المستأجر
+            self.cursor.execute('DELETE FROM tenants WHERE id_number = ?', (tenant_id,))
+            
+            # تحديث حالة الشقة إلى "متاحة"
+            self.cursor.execute('''
+                UPDATE apartments SET status = 'متاحة', tenant_name = NULL
+                WHERE number = ?
+            ''', (apartment_number,))
+            
+            self.conn.commit()
+            self.load_tenants()
+    
+    def edit_tenant(self):
+        """تعديل بيانات مستأجر محدد"""
+        selected_item = self.tenants_tree.selection()
+        if not selected_item:
+            messagebox.showerror("خطأ", "الرجاء اختيار مستأجر للتعديل", parent=self.root)
+            return
+        
+        # جلب بيانات المستأجر المحدد
+        tenant_id = self.tenants_tree.item(selected_item)['values'][2]
+        self.cursor.execute('SELECT * FROM tenants WHERE id_number = ?', (tenant_id,))
+        tenant = self.cursor.fetchone()
+        
+        # جلب رقم الشقة
+        self.cursor.execute('SELECT number FROM apartments WHERE id = ?', (tenant[4],))
+        apartment_number = self.cursor.fetchone()[0]
+        
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title("تعديل بيانات المستأجر")
+        edit_window.geometry("500x400")
+        
+        # حقول التعديل
+        ttk.Label(edit_window, text="الاسم:").grid(row=0, column=1, padx=5, pady=5, sticky='e')
+        name_entry = ttk.Entry(edit_window, justify='right')
+        name_entry.grid(row=0, column=0, padx=5, pady=5)
+        name_entry.insert(0, tenant[1])
+        
+        ttk.Label(edit_window, text="رقم الهاتف:").grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        phone_entry = ttk.Entry(edit_window, justify='right')
+        phone_entry.grid(row=1, column=0, padx=5, pady=5)
+        phone_entry.insert(0, tenant[2])
+        
+        ttk.Label(edit_window, text="رقم الهوية:").grid(row=2, column=1, padx=5, pady=5, sticky='e')
+        id_entry = ttk.Entry(edit_window, justify='right')
+        id_entry.grid(row=2, column=0, padx=5, pady=5)
+        id_entry.insert(0, tenant[3])
+        id_entry.config(state='readonly')
+        
+        ttk.Label(edit_window, text="رقم الشقة:").grid(row=3, column=1, padx=5, pady=5, sticky='e')
+        apartment_entry = ttk.Entry(edit_window, justify='right')
+        apartment_entry.grid(row=3, column=0, padx=5, pady=5)
+        apartment_entry.insert(0, apartment_number)
+        
+        def save_changes():
+            # التحقق من وجود الشقة الجديدة
+            new_apartment = apartment_entry.get()
+            self.cursor.execute('SELECT id FROM apartments WHERE number = ?', (new_apartment,))
+            apartment = self.cursor.fetchone()
+            
+            if not apartment:
+                messagebox.showerror("خطأ", "رقم الشقة غير موجود", parent=edit_window)
+                return
+            
+            apartment_id = apartment[0]
+            
+            try:
+                # تحديث بيانات المستأجر
+                self.cursor.execute('''
+                    UPDATE tenants SET
+                    name = ?,
+                    phone = ?,
+                    apartment_id = ?
+                    WHERE id_number = ?
+                ''', (
+                    name_entry.get(),
+                    phone_entry.get(),
+                    apartment_id,
+                    tenant_id
+                ))
+                
+                # إذا تغيرت الشقة، نحدث حالة الشقة القديمة والجديدة
+                if new_apartment != apartment_number:
+                    # تحديث الشقة القديمة إلى متاحة
+                    self.cursor.execute('''
+                        UPDATE apartments SET status = 'متاحة', tenant_name = NULL
+                        WHERE number = ?
+                    ''', (apartment_number,))
+                    
+                    # تحديث الشقة الجديدة إلى مؤجرة
+                    self.cursor.execute('''
+                        UPDATE apartments SET status = 'مؤجرة', tenant_name = ?
+                        WHERE number = ?
+                    ''', (name_entry.get(), new_apartment))
+                
+                self.conn.commit()
+                messagebox.showinfo("نجاح", "تم تعديل بيانات المستأجر بنجاح", parent=edit_window)
+                edit_window.destroy()
+                self.load_tenants()
+            except Exception as e:
+                messagebox.showerror("خطأ", f"حدث خطأ: {str(e)}", parent=edit_window)
+        
+        ttk.Button(edit_window, text="حفظ التعديلات", command=save_changes).grid(row=4, column=0, columnspan=2, pady=10)
+    
+    def clear_tenant_fields(self):
+        """مسح حقول إدخال المستأجر"""
+        self.tenant_name.delete(0, 'end')
+        self.tenant_phone.delete(0, 'end')
+        self.tenant_id.delete(0, 'end')
+        self.tenant_apartment.delete(0, 'end')
+    
+    def setup_contracts_tab(self):
+        """تكوين واجهة تبويب العقود"""
+        # إطار إنشاء عقد جديد
+        contract_frame = ttk.LabelFrame(self.contracts_tab, text="إنشاء عقد إيجار جديد")
+        contract_frame.pack(fill='x', padx=10, pady=5)
+        
+        # حقول الإدخال
+        ttk.Label(contract_frame, text="رقم الشقة:").grid(row=0, column=3, padx=5, pady=5, sticky='e')
+        self.contract_apartment = ttk.Entry(contract_frame, justify='right')
+        self.contract_apartment.grid(row=0, column=2, padx=5, pady=5)
+        
+        ttk.Label(contract_frame, text="اسم المستأجر:").grid(row=0, column=1, padx=5, pady=5, sticky='e')
+        self.contract_tenant = ttk.Entry(contract_frame, justify='right')
+        self.contract_tenant.grid(row=0, column=0, padx=5, pady=5)
+        
+        ttk.Label(contract_frame, text="تاريخ البدء:").grid(row=1, column=3, padx=5, pady=5, sticky='e')
+        self.contract_start = ttk.Entry(contract_frame, justify='right')
+        self.contract_start.grid(row=1, column=2, padx=5, pady=5)
+        
+        ttk.Label(contract_frame, text="تاريخ الانتهاء:").grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        self.contract_end = ttk.Entry(contract_frame, justify='right')
+        self.contract_end.grid(row=1, column=0, padx=5, pady=5)
+        
+        ttk.Label(contract_frame, text="السعر الشهري:").grid(row=2, column=3, padx=5, pady=5, sticky='e')
+        self.contract_price = ttk.Entry(contract_frame, justify='right')
+        self.contract_price.grid(row=2, column=2, padx=5, pady=5)
+        
+        # زر إنشاء العقد
+        ttk.Button(contract_frame, text="إنشاء العقد", command=self.create_contract).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky='w')
+        
+        # إطار عرض العقود
+        list_frame = ttk.LabelFrame(self.contracts_tab, text="قائمة العقود النشطة")
+        list_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # شجرة عرض البيانات
+        columns = ('apartment', 'tenant', 'start', 'end', 'price')
+        self.contracts_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=15)
+        
+        # عناوين الأعمدة
+        self.contracts_tree.heading('apartment', text='رقم الشقة', anchor='e')
+        self.contracts_tree.heading('tenant', text='اسم المستأجر', anchor='e')
+        self.contracts_tree.heading('start', text='تاريخ البدء', anchor='e')
+        self.contracts_tree.heading('end', text='تاريخ الانتهاء', anchor='e')
+        self.contracts_tree.heading('price', text='السعر الشهري', anchor='e')
+        
+        # تحديد عرض الأعمدة
+        self.contracts_tree.column('apartment', width=120, anchor='e')
+        self.contracts_tree.column('tenant', width=200, anchor='e')
+        self.contracts_tree.column('start', width=120, anchor='e')
+        self.contracts_tree.column('end', width=120, anchor='e')
+        self.contracts_tree.column('price', width=120, anchor='e')
+        
+        self.contracts_tree.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # شريط التمرير
+        scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=self.contracts_tree.yview)
+        scrollbar.pack(side='left', fill='y')
+        self.contracts_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # أزرار التحكم
+        control_frame = ttk.Frame(list_frame)
+        control_frame.pack(fill='x', pady=5)
+        
+        ttk.Button(control_frame, text="تحديث القائمة", command=self.load_contracts).pack(side='right', padx=5)
+        ttk.Button(control_frame, text="إنهاء العقد", command=self.end_contract).pack(side='right', padx=5)
+        
+        # تحميل البيانات
+        self.load_contracts()
+    
+    def create_contract(self):
+        """إنشاء عقد إيجار جديد"""
+        apartment_number = self.contract_apartment.get()
+        tenant_name = self.contract_tenant.get()
+        start_date = self.contract_start.get()
+        end_date = self.contract_end.get()
+        price = self.contract_price.get()
+        
+        if not all([apartment_number, tenant_name, start_date, end_date, price]):
+            messagebox.showerror("خطأ", "الرجاء ملء جميع الحقول", parent=self.root)
+            return
+        
+        try:
+            # تحديث بيانات الشقة
+            self.cursor.execute('''
+                UPDATE apartments SET 
+                status = 'مؤجرة',
+                tenant_name = ?,
+                contract_start = ?,
+                contract_end = ?,
+                price = ?
+                WHERE number = ?
+            ''', (tenant_name, start_date, end_date, float(price), apartment_number))
+            
+            self.conn.commit()
+            messagebox.showinfo("نجاح", "تم إنشاء العقد بنجاح", parent=self.root)
+            self.load_contracts()
+            self.clear_contract_fields()
+        except ValueError:
+            messagebox.showerror("خطأ", "الرجاء إدخال سعر صحيح", parent=self.root)
+    
+    def load_contracts(self):
+        """تحميل قائمة العقود من قاعدة البيانات"""
+        self.contracts_tree.delete(*self.contracts_tree.get_children())
+        
+        self.cursor.execute('''
+            SELECT number, tenant_name, contract_start, contract_end, price
+            FROM apartments 
+            WHERE status = 'مؤجرة' AND contract_start IS NOT NULL
+        ''')
+        contracts = self.cursor.fetchall()
+        
+        for contract in contracts:
+            self.contracts_tree.insert('', 'end', values=contract)
+    
+    def end_contract(self):
+        """إنهاء عقد محدد"""
+        selected_item = self.contracts_tree.selection()
+        if not selected_item:
+            messagebox.showerror("خطأ", "الرجاء اختيار عقد لإنهائه", parent=self.root)
+            return
+        
+        apartment_number = self.contracts_tree.item(selected_item)['values'][0]
+        
+        if messagebox.askyesno("تأكيد", f"هل أنت متأكد من إنهاء عقد الشقة رقم {apartment_number}؟", parent=self.root):
+            # تحديث حالة الشقة
+            self.cursor.execute('''
+                UPDATE apartments SET 
+                status = 'متاحة',
+                tenant_name = NULL,
+                contract_start = NULL,
+                contract_end = NULL
+                WHERE number = ?
+            ''', (apartment_number,))
+            
+            self.conn.commit()
+            messagebox.showinfo("نجاح", "تم إنهاء العقد بنجاح", parent=self.root)
+            self.load_contracts()
+    
+    def clear_contract_fields(self):
+        """مسح حقول إدخال العقد"""
+        self.contract_apartment.delete(0, 'end')
+        self.contract_tenant.delete(0, 'end')
+        self.contract_start.delete(0, 'end')
+        self.contract_end.delete(0, 'end')
+        self.contract_price.delete(0, 'end')
+    
+    def setup_reports_tab(self):
+        """تكوين واجهة تبويب التقارير"""
+        # إطار التقارير
+        report_frame = ttk.LabelFrame(self.reports_tab, text="التقارير والإحصاءات")
+        report_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # خيارات التقارير
+        ttk.Label(report_frame, text="نوع التقرير:").grid(row=0, column=1, padx=5, pady=5, sticky='e')
+        self.report_type = ttk.Combobox(report_frame, values=[
+            'الشقق المتاحة',
+            'الشقق المؤجرة',
+            'الشقق تحت الصيانة',
+            'عقود تنتهي هذا الشهر',
+            'إجمالي الإيرادات'
+        ], justify='right')
+        self.report_type.grid(row=0, column=0, padx=5, pady=5)
+        
+        # زر إنشاء التقرير
+        ttk.Button(report_frame, text="عرض التقرير", command=self.generate_report).grid(row=0, column=2, padx=5, pady=5, sticky='w')
+        
+        # إطار عرض التقرير
+        self.report_text = tk.Text(report_frame, height=20, width=80, font=self.arabic_font)
+        self.report_text.grid(row=1, column=0, columnspan=3, padx=5, pady=5)
+        
+        # شريط التمرير
+        scrollbar = ttk.Scrollbar(report_frame, orient='vertical', command=self.report_text.yview)
+        scrollbar.grid(row=1, column=3, sticky='ns')
+        self.report_text.config(yscrollcommand=scrollbar.set)
+    
+    def generate_report(self):
+        """إنشاء التقرير المطلوب"""
+        report_type = self.report_type.get()
+        self.report_text.delete(1.0, 'end')
+        
+        if not report_type:
+            messagebox.showerror("خطأ", "الرجاء اختيار نوع التقرير", parent=self.root)
+            return
+        
+        if report_type == 'الشقق المتاحة':
+            self.cursor.execute('SELECT number, rooms, bathrooms, area, price FROM apartments WHERE status = "متاحة"')
+            apartments = self.cursor.fetchall()
+            
+            self.report_text.insert('end', "الشقق المتاحة:\n\n", 'center')
+            for apartment in apartments:
+                self.report_text.insert('end', f"رقم الشقة: {apartment[0]}\n")
+                self.report_text.insert('end', f"الغرف: {apartment[1]}, الحمامات: {apartment[2]}, المساحة: {apartment[3]} م²\n")
+                self.report_text.insert('end', f"السعر الشهري: {apartment[4]:.2f} ريال\n")
+                self.report_text.insert('end', "-"*50 + "\n")
+        
+        elif report_type == 'الشقق المؤجرة':
+            self.cursor.execute('''
+                SELECT a.number, a.rooms, a.bathrooms, a.area, a.price, a.tenant_name, 
+                       a.contract_start, a.contract_end
+                FROM apartments a
+                WHERE status = "مؤجرة"
+            ''')
+            apartments = self.cursor.fetchall()
+            
+            self.report_text.insert('end', "الشقق المؤجرة:\n\n", 'center')
+            for apartment in apartments:
+                self.report_text.insert('end', f"رقم الشقة: {apartment[0]}\n")
+                self.report_text.insert('end', f"الغرف: {apartment[1]}, الحمامات: {apartment[2]}, المساحة: {apartment[3]} م²\n")
+                self.report_text.insert('end', f"السعر الشهري: {apartment[4]:.2f} ريال\n")
+                self.report_text.insert('end', f"المستأجر: {apartment[5]}\n")
+                self.report_text.insert('end', f"تاريخ العقد: من {apartment[6]} إلى {apartment[7]}\n")
+                self.report_text.insert('end', "-"*50 + "\n")
+        
+        elif report_type == 'الشقق تحت الصيانة':
+            self.cursor.execute('SELECT number, rooms, bathrooms, area FROM apartments WHERE status = "صيانة"')
+            apartments = self.cursor.fetchall()
+            
+            self.report_text.insert('end', "الشقق تحت الصيانة:\n\n", 'center')
+            for apartment in apartments:
+                self.report_text.insert('end', f"رقم الشقة: {apartment[0]}\n")
+                self.report_text.insert('end', f"الغرف: {apartment[1]}, الحمامات: {apartment[2]}, المساحة: {apartment[3]} م²\n")
+                self.report_text.insert('end', "-"*50 + "\n")
+        
+        elif report_type == 'عقود تنتهي هذا الشهر':
+            current_month = datetime.now().strftime("%Y-%m")
+            self.cursor.execute('''
+                SELECT number, tenant_name, contract_end 
+                FROM apartments 
+                WHERE contract_end LIKE ? AND status = "مؤجرة"
+            ''', (f"{current_month}%",))
+            
+            contracts = self.cursor.fetchall()
+            
+            self.report_text.insert('end', f"العقود التي تنتهي في شهر {current_month}:\n\n", 'center')
+            for contract in contracts:
+                self.report_text.insert('end', f"رقم الشقة: {contract[0]}\n")
+                self.report_text.insert('end', f"المستأجر: {contract[1]}\n")
+                self.report_text.insert('end', f"تاريخ الانتهاء: {contract[2]}\n")
+                self.report_text.insert('end', "-"*50 + "\n")
+        
+        elif report_type == 'إجمالي الإيرادات':
+            self.cursor.execute('SELECT SUM(price) FROM apartments WHERE status = "مؤجرة"')
+            total = self.cursor.fetchone()[0] or 0
+            
+            self.report_text.insert('end', f"إجمالي الإيرادات الشهرية: {total:.2f} ريال\n\n", 'center')
+            
+            self.cursor.execute('SELECT COUNT(*) FROM apartments WHERE status = "مؤجرة"')
+            count = self.cursor.fetchone()[0]
+            
+            self.report_text.insert('end', f"عدد الشقق المؤجرة: {count}\n")
+            
+            self.cursor.execute('SELECT COUNT(*) FROM apartments WHERE status = "متاحة"')
+            count = self.cursor.fetchone()[0]
+            
+            self.report_text.insert('end', f"عدد الشقق المتاحة: {count}\n")
+            
+            self.cursor.execute('SELECT COUNT(*) FROM apartments WHERE status = "صيانة"')
+            count = self.cursor.fetchone()[0]
+            
+            self.report_text.insert('end', f"عدد الشقق تحت الصيانة: {count}\n")
+        
+        # محاذاة النص لليمين
+        self.report_text.tag_configure('center', justify='right')
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = RentalSystem(root)
+    root.mainloop()
